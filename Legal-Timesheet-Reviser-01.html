@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Timesheet Reviser - Automated Entry Correction</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const AlertCircle = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+        );
+
+        const Check = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        );
+
+        const Copy = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+        );
+
+        const FileText = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+        );
+
+        const Zap = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+        );
+
+        const Shield = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+        );
+
+        const TimesheetReviser = () => {
+            const [input, setInput] = useState('');
+            const [results, setResults] = useState([]);
+            const [copied, setCopied] = useState(false);
+            const [showInfo, setShowInfo] = useState(true);
+
+            const applyRules = (text) => {
+                let revised = text;
+                const changes = [];
+
+                if (revised.match(/\bTCG\b/g)) {
+                    revised = revised.replace(/\bTCG\b/g, 'TechConsult Group');
+                    changes.push('Expanded "TCG" to "TechConsult Group"');
+                }
+
+                if (revised.match(/\bEOC\b/g)) {
+                    revised = revised.replace(/\bEOC\b/g, 'EPA Oversight Committee');
+                    changes.push('Expanded "EOC" to "EPA Oversight Committee"');
+                }
+
+                if (revised.match(/\bcommittee\b/g)) {
+                    revised = revised.replace(/\bcommittee\b/g, 'Committee');
+                    changes.push('Capitalized "Committee"');
+                }
+
+                const initialPattern = /\b([A-Z])\s+([A-Z][a-z]+)/g;
+                if (revised.match(initialPattern)) {
+                    revised = revised.replace(initialPattern, '$1. $2');
+                    changes.push('Added period after initial(s)');
+                }
+
+                if (revised.match(/worked on (revising|drafting)/gi)) {
+                    revised = revised.replace(/worked on (revising|drafting)/gi, (match, p1) => {
+                        return p1.charAt(0).toUpperCase() + p1.slice(1);
+                    });
+                    changes.push('Changed "worked on revising/drafting" to "Revised/Drafted"');
+                } else if (revised.match(/worked on/gi)) {
+                    revised = revised.replace(/worked on/gi, 'Revised');
+                    changes.push('Changed "worked on" to "Revised"');
+                }
+
+                if (revised.match(/attended/gi)) {
+                    revised = revised.replace(/attended/gi, 'Participated in');
+                    changes.push('Changed "attended" to "Participated in"');
+                }
+
+                if (revised.match(/(regulatory-side|testimony-side)\s*/gi)) {
+                    revised = revised.replace(/(regulatory-side|testimony-side)\s*/gi, '');
+                    changes.push('Removed "regulatory-side" or "testimony-side"');
+                }
+
+                if (revised.match(/regarding/gi)) {
+                    revised = revised.replace(/regarding/gi, 're');
+                    changes.push('Changed "regarding" to "re"');
+                }
+
+                if (revised.match(/\bre:\s*/gi)) {
+                    revised = revised.replace(/\bre:\s*/gi, 're ');
+                    changes.push('Removed colon after "re"');
+                }
+
+                const hasMultipleMeetings = (revised.match(/met with/gi) || []).length > 1;
+                const hasMultipleRevisions = (revised.match(/revised same/gi) || []).length > 1;
+                const hasSemicolons = (revised.match(/;/g) || []).length > 2;
+
+                const needsConsolidation = hasMultipleMeetings || hasMultipleRevisions || hasSemicolons;
+
+                if (needsConsolidation) {
+                    changes.push('⚠️ Entry may benefit from consolidation');
+                }
+
+                return { revised, changes, needsConsolidation };
+            };
+
+            const processEntries = () => {
+                const lines = input.split('\n').filter(line => line.trim());
+                const processed = lines.map(line => {
+                    const dateMatch = line.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–—]\s*(.+)$/);
+                    
+                    if (dateMatch) {
+                        const date = dateMatch[1];
+                        const entry = dateMatch[2];
+                        const { revised, changes, needsConsolidation } = applyRules(entry);
+                        return {
+                            date,
+                            original: entry,
+                            revised,
+                            changes,
+                            hasChanges: changes.length > 0,
+                            needsConsolidation
+                        };
+                    } else {
+                        const { revised, changes, needsConsolidation } = applyRules(line);
+                        return {
+                            date: null,
+                            original: line,
+                            revised,
+                            changes,
+                            hasChanges: changes.length > 0,
+                            needsConsolidation
+                        };
+                    }
+                });
+
+                setResults(processed);
+                setShowInfo(false);
+            };
+
+            const copyAllRevised = () => {
+                const revisedText = results
+                    .map(r => r.date ? `${r.date} - ${r.revised}` : r.revised)
+                    .join('\n');
+                navigator.clipboard.writeText(revisedText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            };
+
+            const copyOne = (index) => {
+                const r = results[index];
+                const text = r.date ? `${r.date} - ${r.revised}` : r.revised;
+                navigator.clipboard.writeText(text);
+            };
+
+            return (
+                <div className="min-h-screen">
+                    {/* Header */}
+                    <header className="bg-white shadow-sm border-b border-gray-200">
+                        <div className="max-w-6xl mx-auto px-6 py-6">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-blue-600 p-2 rounded-lg">
+                                    <FileText size={24} className="text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-900">Legal Timesheet Reviser</h1>
+                                    <p className="text-sm text-gray-600">Automated entry correction for legal professionals</p>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="max-w-6xl mx-auto px-6 py-8">
+                        {/* Info Cards */}
+                        {showInfo && (
+                            <div className="grid md:grid-cols-3 gap-4 mb-8">
+                                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                                    <div className="flex items-start gap-3">
+                                        <div className="bg-blue-100 p-2 rounded-lg">
+                                            <Zap size={20} className="text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900 mb-1">Instant Corrections</h3>
+                                            <p className="text-sm text-gray-600">Automatically applies 10+ style rules in seconds</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                                    <div className="flex items-start gap-3">
+                                        <div className="bg-green-100 p-2 rounded-lg">
+                                            <Check size={20} className="text-green-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900 mb-1">Smart Detection</h3>
+                                            <p className="text-sm text-gray-600">Flags entries needing consolidation with examples</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                                    <div className="flex items-start gap-3">
+                                        <div className="bg-purple-100 p-2 rounded-lg">
+                                            <Shield size={20} className="text-purple-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900 mb-1">100% Private</h3>
+                                            <p className="text-sm text-gray-600">All processing happens in your browser</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Main Tool */}
+                        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white">
+                                <h2 className="text-xl font-semibold mb-2">Check Your Entries</h2>
+                                <p className="text-blue-100 text-sm">
+                                    Paste your timesheet entries below. Each entry should be on its own line with the date in MM/DD/YYYY format.
+                                </p>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block font-medium text-gray-700 mb-2">Time Entries</label>
+                                    <textarea
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        placeholder="2/10/2026 - Revised GreenTech testimony for EPA Oversight Committee&#10;2/11/2026 - Met with TechConsult Group re document requests and productions&#10;2/12/2026 - Worked on revising wastewater compliance binder narratives"
+                                        className="w-full h-48 p-4 border-2 border-gray-300 rounded-lg font-mono text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                                    />
+                                </div>
+                                <button
+                                    onClick={processEntries}
+                                    disabled={!input.trim()}
+                                    className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
+                                >
+                                    Check & Revise Entries
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Results */}
+                        {results.length > 0 && (
+                            <div className="mt-8 space-y-6">
+                                <div className="flex justify-between items-center bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-900">Results</h3>
+                                        <p className="text-sm text-gray-600">{results.length} {results.length === 1 ? 'entry' : 'entries'} processed</p>
+                                    </div>
+                                    <button
+                                        onClick={copyAllRevised}
+                                        className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-md hover:shadow-lg"
+                                    >
+                                        {copied ? <Check size={18} /> : <Copy size={18} />}
+                                        {copied ? 'Copied!' : 'Copy All Revised'}
+                                    </button>
+                                </div>
+
+                                {results.map((result, index) => (
+                                    <div
+                                        key={index}
+                                        className={`rounded-xl shadow-md border-2 overflow-hidden ${
+                                            result.needsConsolidation 
+                                                ? 'border-orange-300 bg-orange-50' 
+                                                : result.hasChanges 
+                                                ? 'border-yellow-300 bg-yellow-50' 
+                                                : 'border-green-300 bg-green-50'
+                                        }`}
+                                    >
+                                        <div className="bg-white p-6 space-y-4">
+                                            {result.date && (
+                                                <div className="inline-block px-3 py-1 bg-blue-100 text-blue-800 font-semibold rounded-full text-sm">
+                                                    {result.date}
+                                                </div>
+                                            )}
+                                            
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Original Entry</div>
+                                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm font-mono text-gray-800">
+                                                        {result.original}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Revised Entry</div>
+                                                    {result.needsConsolidation ? (
+                                                        <div className="bg-orange-100 border-2 border-orange-300 rounded-lg p-4 space-y-3">
+                                                            <div className="flex items-start gap-3 text-orange-900">
+                                                                <AlertCircle size={20} className="mt-0.5 flex-shrink-0" />
+                                                                <div>
+                                                                    <p className="font-semibold mb-1">Consolidation Needed</p>
+                                                                    <p className="text-sm">This entry contains multiple similar actions that should be combined into a single, efficient statement.</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-white rounded-lg p-4 space-y-3 border border-orange-200">
+                                                                <div className="font-semibold text-gray-700 text-sm">Example:</div>
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-start gap-2">
+                                                                        <span className="text-red-600 font-bold">❌</span>
+                                                                        <p className="text-xs font-mono text-red-700">Met with Morrison team re emissions section of Committee testimony; revised same; met with Morrison team re water compliance section of Committee testimony; revised same</p>
+                                                                    </div>
+                                                                    <div className="flex items-start gap-2">
+                                                                        <span className="text-green-600 font-bold">✅</span>
+                                                                        <p className="text-xs font-mono text-green-700">Met with Morrison team re Committee testimony and revised same</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="bg-white p-4 rounded-lg border-2 border-green-300 text-sm font-mono text-gray-800">
+                                                            {result.revised}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {result.changes.length > 0 && (
+                                                    <div>
+                                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Changes Applied</div>
+                                                        <ul className="space-y-2">
+                                                            {result.changes.filter(change => !change.startsWith('⚠️')).map((change, i) => (
+                                                                <li key={i} className="flex items-start gap-2 text-sm">
+                                                                    <Check size={16} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                                                    <span className="text-gray-700">{change}</span>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                <button
+                                                    onClick={() => copyOne(index)}
+                                                    className="w-full px-4 py-2 bg-gray-700 text-white font-medium rounded-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Copy size={16} />
+                                                    Copy This Entry
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    <footer className="bg-white border-t border-gray-200 mt-16">
+                        <div className="max-w-6xl mx-auto px-6 py-8">
+                            <div className="text-center text-sm text-gray-600">
+                                <p className="mb-2">Legal Timesheet Reviser - All processing happens locally in your browser</p>
+                                <p className="text-xs text-gray-500">No data is stored or transmitted</p>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<TimesheetReviser />, document.getElementById('root'));
+    </script>
+</body>
+</html>
